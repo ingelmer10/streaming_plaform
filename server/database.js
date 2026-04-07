@@ -2,11 +2,13 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'streaming.db');
+const dbPath = process.env.SQLITE_DB_PATH || (process.env.VERCEL ? path.join('/tmp', 'streaming.db') : path.join(__dirname, 'streaming.db'));
 const db = new Database(dbPath);
 
 // Enable WAL mode for better performance
-db.pragma('journal_mode = WAL');
+if (!process.env.VERCEL) {
+  db.pragma('journal_mode = WAL');
+}
 db.pragma('foreign_keys = ON');
 
 function initializeDatabase() {

@@ -4,7 +4,6 @@ const path = require('path');
 const { initializeDatabase } = require('./database');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Initialize database
 initializeDatabase();
@@ -28,9 +27,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`
   ╔═══════════════════════════════════════════╗
   ║                                           ║
   ║   🎬  StreamVault Server Running          ║
@@ -39,4 +39,7 @@ app.listen(PORT, () => {
   ║                                           ║
   ╚═══════════════════════════════════════════╝
   `);
-});
+  });
+}
+
+module.exports = app;
