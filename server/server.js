@@ -5,9 +5,6 @@ const { initializeDatabase } = require('./database');
 
 const app = express();
 
-// Initialize database
-initializeDatabase();
-
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -29,8 +26,15 @@ app.get('*', (req, res) => {
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`
+  
+  // Initialize database and start server
+  (async () => {
+    try {
+      await initializeDatabase();
+      console.log('✅ Database initialized successfully');
+      
+      app.listen(PORT, () => {
+        console.log(`
   ╔═══════════════════════════════════════════╗
   ║                                           ║
   ║   🎬  StreamVault Server Running          ║
@@ -39,7 +43,12 @@ if (require.main === module) {
   ║                                           ║
   ╚═══════════════════════════════════════════╝
   `);
-  });
+      });
+    } catch (err) {
+      console.error('❌ Failed to initialize database:', err);
+      process.exit(1);
+    }
+  })();
 }
 
 module.exports = app;
