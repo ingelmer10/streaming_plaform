@@ -156,8 +156,8 @@ async function openProfileModal(accountId, profileId) {
         <input class="form-input" id="pr-whatsapp" value="${profile ? (profile.client_whatsapp || '') : ''}" placeholder="Ej: 5491112345678 (con código de país)">
       </div>
       <div class="form-group">
-        <label class="form-label">Vigencia (días)</label>
-        <input class="form-input" id="pr-duration" type="number" min="1" value="${profile && profile.expiry_date && daysUntilExpiry(profile.expiry_date) > 0 ? daysUntilExpiry(profile.expiry_date) : ''}" placeholder="30">
+        <label class="form-label">Fecha de Vencimiento</label>
+        <input class="form-input" id="pr-expiry-date" type="date" value="${profile && profile.expiry_date ? profile.expiry_date : ''}">
       </div>
     </div>
     <div class="modal-footer">
@@ -168,13 +168,8 @@ async function openProfileModal(accountId, profileId) {
 }
 
 async function saveProfile(accountId, profileId) {
-  const duration = parseInt(document.getElementById('pr-duration').value, 10);
-  let expiryDate = null;
-  if (!Number.isNaN(duration) && duration > 0) {
-    const date = new Date();
-    date.setDate(date.getDate() + duration);
-    expiryDate = date.toISOString().split('T')[0];
-  }
+  const expiryDateInput = document.getElementById('pr-expiry-date').value;
+  const expiryDate = expiryDateInput ? expiryDateInput : (profileId ? window.currentProfileExpiry : null);
 
   const data = {
     account_id: accountId,
@@ -183,7 +178,7 @@ async function saveProfile(accountId, profileId) {
     client_name: document.getElementById('pr-client').value.trim(),
     client_whatsapp: document.getElementById('pr-whatsapp').value.trim(),
     sale_price: parseFloat(document.getElementById('pr-price').value) || 0,
-    expiry_date: expiryDate !== null ? expiryDate : (profileId ? window.currentProfileExpiry : null),
+    expiry_date: expiryDate,
   };
   if (!data.profile_name) { showToast('El nombre del perfil es requerido', 'warning'); return; }
   try {

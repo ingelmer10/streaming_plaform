@@ -158,8 +158,8 @@ async function openAccountModal(platformId, accountId) {
           <input class="form-input" id="acc-cost" type="number" step="0.01" min="0" value="${account ? (account.cost || 0) : 0}" placeholder="0.00">
         </div>
         <div class="form-group">
-          <label class="form-label">Vigencia (días)</label>
-          <input class="form-input" id="acc-duration" type="number" min="1" value="${account && account.expiry_date && daysUntilExpiry(account.expiry_date) > 0 ? daysUntilExpiry(account.expiry_date) : ''}" placeholder="30">
+          <label class="form-label">Fecha de Vencimiento</label>
+          <input class="form-input" id="acc-expiry-date" type="date" value="${account && account.expiry_date ? account.expiry_date : ''}">
         </div>
       </div>
     </div>
@@ -178,13 +178,8 @@ function toggleAccPassword() {
 }
 
 async function saveAccount(platformId, accountId) {
-  const duration = parseInt(document.getElementById('acc-duration').value, 10);
-  let expiryDate = null;
-  if (!Number.isNaN(duration) && duration > 0) {
-    const date = new Date();
-    date.setDate(date.getDate() + duration);
-    expiryDate = date.toISOString().split('T')[0];
-  }
+  const expiryDateInput = document.getElementById('acc-expiry-date').value;
+  const expiryDate = expiryDateInput ? expiryDateInput : (accountId ? window.currentAccountExpiry : null);
 
   const data = {
     platform_id: platformId,
@@ -193,7 +188,7 @@ async function saveAccount(platformId, accountId) {
     provider_name: document.getElementById('acc-provider').value.trim(),
     provider_phone: document.getElementById('acc-provider-phone').value.trim(),
     cost: parseFloat(document.getElementById('acc-cost').value) || 0,
-    expiry_date: expiryDate !== null ? expiryDate : (accountId ? window.currentAccountExpiry : null),
+    expiry_date: expiryDate,
   };
   if (!data.email || !data.password) { showToast('Email y contraseña son requeridos', 'warning'); return; }
   try {
