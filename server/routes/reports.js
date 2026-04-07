@@ -1,5 +1,5 @@
 const express = require('express');
-const { db } = require('../database');
+const { pool } = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -7,47 +7,193 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // GET /api/reports/summary - General summary
-router.get('/summary', (req, res) => {
-  const summary = db.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM platforms) as total_platforms,
-      (SELECT COUNT(*) FROM accounts) as total_accounts,
-      (SELECT COUNT(*) FROM profiles WHERE is_active = 1) as total_profiles,
-      (SELECT COUNT(*) FROM profiles WHERE client_name != '' AND is_active = 1) as active_clients,
-      (SELECT COALESCE(SUM(cost), 0) FROM accounts) + (SELECT COALESCE(SUM(sale_price), 0) FROM renewals WHERE renewal_type = 'account') as total_costs,
-      ((SELECT COALESCE(SUM(sale_price), 0) FROM profiles) + (SELECT COALESCE(SUM(sale_price), 0) FROM renewals WHERE renewal_type = 'profile')) as total_revenue,
-      (SELECT COUNT(*) FROM profiles WHERE expiry_date IS NOT NULL AND expiry_date <= date('now') AND is_active = 1) as expired_profiles,
-      (SELECT COUNT(*) FROM profiles WHERE expiry_date IS NOT NULL AND expiry_date > date('now') AND expiry_date <= date('now', '+7 days') AND is_active = 1) as expiring_soon_profiles,
-      (SELECT COUNT(*) FROM accounts WHERE expiry_date IS NOT NULL AND expiry_date <= date('now')) as expired_accounts,
-      (SELECT COUNT(*) FROM accounts WHERE expiry_date IS NOT NULL AND expiry_date > date('now') AND expiry_date <= date('now', '+7 days')) as expiring_soon_accounts
-  `).get();
+router.get('/summary', async (req, res) => {
+  try {
+    const summaryResult = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM platforms) as total_platforms,
+        (SELECT COUNT(*) FROM accounts) as total_accounts,
+        (SELECT COUNT(*) FROM profiles WHERE is_active = true) as total_profiles,
+        (SELECT COUNT(*) FROM profiles WHERE client_name != '' AND is_active = true) as active_clients,
+        (SELECT COALESCE(SUM(cost), 0) FROM accounts) + (SELECT COALESCE(SUM(sale_price), 0) FROM renewals WHERE renewal_type = 'account') as total_costs,
+        ((SELECT COALESCE(SUM(sale_price), 0) FROM profiles) + (SELECT COALESCE(SUM(sale_price), 0) FROM renewals WHERE renewal_type = 'profile')) as total_revenue,
+        (SELECT COUNT(*) FROM profiles WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_DATE AND is_active = true) as expired_profiles,
+        (SELECT COUNT(*) FROM profiles WHERE expiry_date IS NOT NULL AND expiry_date > CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '7 days' AND is_active = true) as expiring_soon_profiles,
+        (SELECT COUNT(*) FROM accounts WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_DATE) as expired_accounts,
+        (SELECT COUNT(*) FROM accounts WHERE expiry_date IS NOT NULL AND expiry_date > CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '7 days') as expiring_soon_accounts
+    `);
 
-  summary.total_profit = summary.total_revenue - summary.total_costs;
-  res.json(summary);
+    const summary = summaryResult.rows[0];
+    summary.total_profit = summary.total_revenue - summary.total_costs;
+    res.json(summary);
+  } catch (err) {
+    console.error('Reports summary error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
 
 // GET /api/reports/platforms - Revenue & cost per platform
-router.get('/platforms', (req, res) => {
-  const data = db.prepare(`
-    SELECT
-      pl.id,
-      pl.name,
-      pl.icon,
-      pl.color,
-      COUNT(DISTINCT a.id) as account_count,
-      COUNT(DISTINCT CASE WHEN pr.is_active = 1 THEN pr.id END) as profile_count,
-      COALESCE((SELECT SUM(cost) FROM accounts WHERE platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'account'), 0) as total_cost,
-      COALESCE((SELECT SUM(pr2.sale_price) FROM profiles pr2 JOIN accounts a2 ON a2.id = pr2.account_id WHERE a2.platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'profile'), 0) as total_revenue,
-      COALESCE((SELECT SUM(pr2.sale_price) FROM profiles pr2 JOIN accounts a2 ON a2.id = pr2.account_id WHERE a2.platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'profile'), 0) - (COALESCE((SELECT SUM(cost) FROM accounts WHERE platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'account'), 0)) as profit
-    FROM platforms pl
-    LEFT JOIN accounts a ON a.platform_id = pl.id
-    LEFT JOIN profiles pr ON pr.account_id = a.id
-    GROUP BY pl.id
-    ORDER BY profit DESC
-  `).all();
+router.get('/platforms', async (req, res) => {
+  try {
+    const dataResult = await pool.query(`
+      SELECT
+        pl.id,
+        pl.name,
+        pl.icon,
+        pl.color,
+        COUNT(DISTINCT a.id) as account_count,
+        COUNT(DISTINCT CASE WHEN pr.is_active = true THEN pr.id END) as profile_count,
+        COALESCE((SELECT SUM(cost) FROM accounts WHERE platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'account'), 0) as total_cost,
+        COALESCE((SELECT SUM(pr2.sale_price) FROM profiles pr2 JOIN accounts a2 ON a2.id = pr2.account_id WHERE a2.platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'profile'), 0) as total_revenue,
+        COALESCE((SELECT SUM(pr2.sale_price) FROM profiles pr2 JOIN accounts a2 ON a2.id = pr2.account_id WHERE a2.platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'profile'), 0) - (COALESCE((SELECT SUM(cost) FROM accounts WHERE platform_id = pl.id), 0) + COALESCE((SELECT SUM(r.sale_price) FROM renewals r WHERE r.platform_id = pl.id AND r.renewal_type = 'account'), 0)) as profit
+      FROM platforms pl
+      LEFT JOIN accounts a ON a.platform_id = pl.id
+      LEFT JOIN profiles pr ON pr.account_id = a.id
+      GROUP BY pl.id, pl.name, pl.icon, pl.color
+      ORDER BY profit DESC
+    `);
 
-  res.json(data);
+    res.json(dataResult.rows);
+  } catch (err) {
+    console.error('Reports platforms error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
+
+// GET /api/reports/expiring-soon - Expiring accounts and profiles
+router.get('/expiring-soon', async (req, res) => {
+  try {
+    const expiringAccountsResult = await pool.query(`
+      SELECT
+        'account' as type,
+        a.id,
+        a.email,
+        a.expiry_date,
+        p.name as platform_name,
+        p.icon as platform_icon,
+        p.color as platform_color,
+        NULL as profile_name,
+        NULL as client_name
+      FROM accounts a
+      JOIN platforms p ON p.id = a.platform_id
+      WHERE a.expiry_date IS NOT NULL AND a.expiry_date > CURRENT_DATE AND a.expiry_date <= CURRENT_DATE + INTERVAL '7 days'
+      ORDER BY a.expiry_date ASC
+    `);
+
+    const expiringProfilesResult = await pool.query(`
+      SELECT
+        'profile' as type,
+        pr.id,
+        a.email as account_email,
+        pr.expiry_date,
+        p.name as platform_name,
+        p.icon as platform_icon,
+        p.color as platform_color,
+        pr.profile_name,
+        pr.client_name
+      FROM profiles pr
+      JOIN accounts a ON a.id = pr.account_id
+      JOIN platforms p ON p.id = a.platform_id
+      WHERE pr.expiry_date IS NOT NULL AND pr.expiry_date > CURRENT_DATE AND pr.expiry_date <= CURRENT_DATE + INTERVAL '7 days' AND pr.is_active = true
+      ORDER BY pr.expiry_date ASC
+    `);
+
+    res.json({
+      expiring_accounts: expiringAccountsResult.rows,
+      expiring_profiles: expiringProfilesResult.rows
+    });
+  } catch (err) {
+    console.error('Reports expiring-soon error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// GET /api/reports/expired - Expired accounts and profiles
+router.get('/expired', async (req, res) => {
+  try {
+    const expiredAccountsResult = await pool.query(`
+      SELECT
+        'account' as type,
+        a.id,
+        a.email,
+        a.expiry_date,
+        p.name as platform_name,
+        p.icon as platform_icon,
+        p.color as platform_color,
+        NULL as profile_name,
+        NULL as client_name
+      FROM accounts a
+      JOIN platforms p ON p.id = a.platform_id
+      WHERE a.expiry_date IS NOT NULL AND a.expiry_date <= CURRENT_DATE
+      ORDER BY a.expiry_date ASC
+    `);
+
+    const expiredProfilesResult = await pool.query(`
+      SELECT
+        'profile' as type,
+        pr.id,
+        a.email as account_email,
+        pr.expiry_date,
+        p.name as platform_name,
+        p.icon as platform_icon,
+        p.color as platform_color,
+        pr.profile_name,
+        pr.client_name
+      FROM profiles pr
+      JOIN accounts a ON a.id = pr.account_id
+      JOIN platforms p ON p.id = a.platform_id
+      WHERE pr.expiry_date IS NOT NULL AND pr.expiry_date <= CURRENT_DATE AND pr.is_active = true
+      ORDER BY pr.expiry_date ASC
+    `);
+
+    res.json({
+      expired_accounts: expiredAccountsResult.rows,
+      expired_profiles: expiredProfilesResult.rows
+    });
+  } catch (err) {
+    console.error('Reports expired error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// GET /api/reports/sales - Sales and profit report
+router.get('/sales', async (req, res) => {
+  try {
+    const salesResult = await pool.query(`
+      SELECT
+        DATE(created_at) as date,
+        COUNT(*) as profiles_sold,
+        SUM(sale_price) as revenue
+      FROM profiles
+      WHERE sale_price > 0
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+      LIMIT 30
+    `);
+
+    const renewalsResult = await pool.query(`
+      SELECT
+        DATE(created_at) as date,
+        COUNT(*) as renewals_count,
+        SUM(sale_price) as renewal_revenue
+      FROM renewals
+      WHERE sale_price > 0
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+      LIMIT 30
+    `);
+
+    res.json({
+      sales: salesResult.rows,
+      renewals: renewalsResult.rows
+    });
+  } catch (err) {
+    console.error('Reports sales error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+module.exports = router;
 
 // GET /api/reports/renewals - Renewal history
 router.get('/renewals', (req, res) => {

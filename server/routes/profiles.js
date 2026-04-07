@@ -1,5 +1,5 @@
 const express = require('express');
-const { db } = require('../database');
+const { pool } = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -7,47 +7,210 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // GET /api/profiles/account/:accountId - List profiles for an account
-router.get('/account/:accountId', (req, res) => {
-  const profiles = db.prepare(`
-    SELECT p.*,
-      a.email as account_email,
-      a.cost as account_cost,
-      pl.name as platform_name,
-      pl.icon as platform_icon,
-      pl.color as platform_color
-    FROM profiles p
-    JOIN accounts a ON a.id = p.account_id
-    JOIN platforms pl ON pl.id = a.platform_id
-    WHERE p.account_id = ? AND p.is_active = 1
-    ORDER BY p.created_at DESC
-  `).all(req.params.accountId);
+router.get('/account/:accountId', async (req, res) => {
+  try {
+    const profilesResult = await pool.query(`
+      SELECT p.*,
+        a.email as account_email,
+        a.cost as account_cost,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.account_id = $1 AND p.is_active = true
+      ORDER BY p.created_at DESC
+    `, [req.params.accountId]);
 
-  res.json(profiles);
+    res.json(profilesResult.rows);
+  } catch (err) {
+    console.error('Profiles list error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
 
 // GET /api/profiles/:id - Get single profile
-router.get('/:id', (req, res) => {
-  const profile = db.prepare(`
-    SELECT p.*,
-      a.email as account_email,
-      a.cost as account_cost,
-      pl.name as platform_name,
-      pl.icon as platform_icon,
-      pl.color as platform_color
-    FROM profiles p
-    JOIN accounts a ON a.id = p.account_id
-    JOIN platforms pl ON pl.id = a.platform_id
-    WHERE p.id = ? AND p.is_active = 1
-  `).get(req.params.id);
+router.get('/:id', async (req, res) => {
+  try {
+    const profileResult = await pool.query(`
+      SELECT p.*,
+        a.email as account_email,
+        a.cost as account_cost,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.id = $1 AND p.is_active = true
+    `, [req.params.id]);
 
-  if (!profile) {
-    return res.status(404).json({ error: 'Perfil no encontrado' });
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Perfil no encontrado' });
+    }
+
+    res.json(profileResult.rows[0]);
+  } catch (err) {
+    console.error('Profile detail error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
-
-  res.json(profile);
 });
 
 // POST /api/profiles - Create profile
+router.post('/', async (req, res) => {
+  const { account_id, profile_name, pin, client_name, client_whatsapp, sale_price, expiry_date } = req.body;
+
+  if (!account_id || !profile_name || !client_name) {
+    return res.status(400).json({ error: 'Cuenta, nombre del perfil y nombre del cliente son requeridos' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO profiles (account_id, profile_name, pin, client_name, client_whatsapp, sale_price, expiry_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [account_id, profile_name, pin || '', client_name, client_whatsapp || '', sale_price || 0, expiry_date]
+    );
+
+    // Get full profile with account/platform info
+    const fullProfileResult = await pool.query(`
+      SELECT p.*,
+        a.email as account_email,
+        a.cost as account_cost,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.id = $1
+    `, [result.rows[0].id]);
+
+    res.status(201).json(fullProfileResult.rows[0]);
+  } catch (err) {
+    console.error('Profile creation error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// PUT /api/profiles/:id - Update profile
+router.put('/:id', async (req, res) => {
+  const { profile_name, pin, client_name, client_whatsapp, sale_price, expiry_date } = req.body;
+
+  if (!profile_name || !client_name) {
+    return res.status(400).json({ error: 'Nombre del perfil y nombre del cliente son requeridos' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE profiles SET profile_name = $1, pin = $2, client_name = $3, client_whatsapp = $4,
+       sale_price = $5, expiry_date = $6 WHERE id = $7 AND is_active = true RETURNING *`,
+      [profile_name, pin || '', client_name, client_whatsapp || '', sale_price || 0, expiry_date, req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Perfil no encontrado' });
+    }
+
+    // Get full profile with account/platform info
+    const fullProfileResult = await pool.query(`
+      SELECT p.*,
+        a.email as account_email,
+        a.cost as account_cost,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.id = $1
+    `, [req.params.id]);
+
+    res.json(fullProfileResult.rows[0]);
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// DELETE /api/profiles/:id - Soft delete profile
+router.delete('/:id', async (req, res) => {
+  try {
+    const result = await pool.query('UPDATE profiles SET is_active = false WHERE id = $1 AND is_active = true RETURNING *', [req.params.id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Perfil no encontrado' });
+    }
+
+    res.json({ message: 'Perfil eliminado exitosamente' });
+  } catch (err) {
+    console.error('Profile deletion error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// POST /api/profiles/:id/renew - Renew profile
+router.post('/:id/renew', async (req, res) => {
+  const { new_expiry_date, sale_price } = req.body;
+
+  if (!new_expiry_date) {
+    return res.status(400).json({ error: 'Nueva fecha de vencimiento es requerida' });
+  }
+
+  try {
+    // Get current profile
+    const profileResult = await pool.query(`
+      SELECT p.*, a.email as account_email, pl.id as platform_id, pl.name as platform_name,
+             pl.icon as platform_icon, pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.id = $1 AND p.is_active = true
+    `, [req.params.id]);
+
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Perfil no encontrado' });
+    }
+
+    const profile = profileResult.rows[0];
+
+    // Update profile expiry
+    await pool.query('UPDATE profiles SET expiry_date = $1 WHERE id = $2', [new_expiry_date, req.params.id]);
+
+    // Log renewal
+    await pool.query(`
+      INSERT INTO renewals (
+        profile_id, account_id, account_email, platform_id, platform_name, platform_icon, platform_color,
+        profile_name, client_name, client_whatsapp, old_expiry_date, new_expiry_date, sale_price, renewal_type
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `, [
+      profile.id, profile.account_id, profile.account_email, profile.platform_id, profile.platform_name,
+      profile.platform_icon, profile.platform_color, profile.profile_name, profile.client_name,
+      profile.client_whatsapp, profile.expiry_date, new_expiry_date, sale_price || 0, 'profile'
+    ]);
+
+    // Get updated profile
+    const updatedResult = await pool.query(`
+      SELECT p.*,
+        a.email as account_email,
+        a.cost as account_cost,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.id = $1
+    `, [req.params.id]);
+
+    res.json(updatedResult.rows[0]);
+  } catch (err) {
+    console.error('Profile renewal error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+module.exports = router;
 router.post('/', (req, res) => {
   const { account_id, profile_name, pin, client_name, client_whatsapp, sale_price, expiry_date } = req.body;
 
