@@ -30,15 +30,31 @@ function getExpiryStatus(dateStr) {
 function waReminderMessage(profile, platformName) {
   const days = daysUntilExpiry(profile.expiry_date);
   const daysText = days === 1 ? '1 día' : `${days} días`;
-  return `¡Hola ${profile.client_name}! 👋\n\nTe recordamos que tu perfil *"${profile.profile_name}"* de *${platformName}* vence en *${daysText}* (${formatDate(profile.expiry_date)}).\n\nSi deseas renovar, ¡contáctanos! 🎬✨`;
+  return `Hola *${profile.client_name}*
+Te recuerdo que tu cuenta de *${platformName}* vence en *${daysText}*. Puedes renovar cuando gustes. ¡Estamos para ayudarte!`;
 }
 
 function waExpiryMessage(profile, platformName) {
-  return `¡Hola ${profile.client_name}! 👋\n\nTe informamos que tu perfil *"${profile.profile_name}"* de *${platformName}* ha *vencido hoy* (${formatDate(profile.expiry_date)}).\n\n¿Te gustaría renovar tu suscripción? ¡Estamos para ayudarte! 🎬🔄`;
+  return `Hola ${profile.client_name}
+Tu cuenta de *${platformName}* vence *hoy*. Para no perder el acceso, por favor renueva lo antes posible. ¡Gracias!`;
 }
 
-function waRenewalMessage(profile, platformName, newDate) {
-  return `¡Hola ${profile.client_name}! 🎉\n\n¡Tu perfil *"${profile.profile_name}"* de *${platformName}* ha sido *renovado exitosamente*!\n\n📅 Nueva fecha de vencimiento: *${formatDate(newDate)}*\n\n¡Disfruta tu contenido! 🎬✨`;
+function waRenewalMessage(profile, platformName, newDate, account) {
+  return `*🔴 ${platformName.toUpperCase()} 🔴*
+========================
+📧 *CORREO:* ${account.email}
+🔑 *CONTRASEÑA:* ${account.password}
+🖥 *PERFIL:* ${profile.profile_name}  *PIN:* ${profile.pin || 'Sin PIN'}
+========================
+♻ *FECHA VENC.: ${formatDate(newDate)}*
+========================
+*REGLAS:*
+1.- NO COMPARTIR LA CUENTA.
+2.- RESPETAR LOS DEMAS PERFILES.
+3.- NO CAMBIAR NADA EN LA CUENTA.
+4.- NO ACTIVAR MIEMBRO EXTRA.
+5.- USAR SOLO EN UN DISPOSITIVO.
+*¡GRACIAS POR SU PREFERENCIA!🤗*`;
 }
 
 function cleanPhoneNumber(phone) {
@@ -73,12 +89,12 @@ function sendExpiryNotice(profile, platformName) {
   showToast('Abriendo WhatsApp con aviso de vencimiento...', 'success');
 }
 
-function sendRenewalNotice(profile, platformName, newDate) {
+function sendRenewalNotice(profile, platformName, newDate, account) {
   if (!profile.client_whatsapp) {
     showToast('Este perfil no tiene número de WhatsApp', 'warning');
     return;
   }
-  const msg = waRenewalMessage(profile, platformName, newDate);
+  const msg = waRenewalMessage(profile, platformName, newDate, account);
   openWhatsApp(profile.client_whatsapp, msg);
   showToast('Abriendo WhatsApp con confirmación de renovación...', 'success');
 }

@@ -187,8 +187,21 @@ async function saveProfile(accountId, profileId) {
   };
   if (!data.profile_name) { showToast('El nombre del perfil es requerido', 'warning'); return; }
   try {
-    if (profileId) { await apiUpdateProfile(profileId, data); showToast('Perfil actualizado', 'success'); }
-    else { await apiCreateProfile(data); showToast('Perfil creado', 'success'); }
+    let result;
+    if (profileId) { 
+      result = await apiUpdateProfile(profileId, data); 
+      showToast('Perfil actualizado', 'success'); 
+    }
+    else { 
+      result = await apiCreateProfile(data); 
+      showToast('Perfil creado', 'success');
+      // Send WhatsApp message for new profiles
+      if (result.client_whatsapp) {
+        const account = await apiGetAccount(accountId);
+        const platform = await apiGetPlatform(account.platform_id);
+        sendRenewalNotice(result, platform.name, result.expiry_date, account);
+      }
+    }
     closeModal();
     await loadProfiles(accountId);
   } catch (err) { showToast(err.message, 'error'); }
@@ -245,7 +258,9 @@ async function renewProfile(profileId, platformName) {
     showToast('Perfil renovado exitosamente', 'success');
     closeModal();
     if (notify && updated.client_whatsapp) {
-      sendRenewalNotice(updated, platformName, newDate);
+      // Get account info for WhatsApp message
+      const account = await apiGetAccount(updated.account_id);
+      sendRenewalNotice(updated, platformName, newDate, account);
     }
     if (currentAccount) await loadProfiles(currentAccount.id);
   } catch (err) { showToast(err.message, 'error'); }
