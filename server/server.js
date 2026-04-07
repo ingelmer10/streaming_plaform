@@ -9,6 +9,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Set correct MIME types for static files
+app.use((req, res, next) => {
+  if (req.path.endsWith('.js')) {
+    res.type('application/javascript');
+  } else if (req.path.endsWith('.css')) {
+    res.type('text/css');
+  }
+  next();
+});
+
 // Serve static files from public folder
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
