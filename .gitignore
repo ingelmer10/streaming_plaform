@@ -1,0 +1,5 @@
+node_modules/
+server/node_modules/
+server/streaming.db
+.env
+*.log
