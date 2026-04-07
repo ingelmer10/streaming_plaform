@@ -4,15 +4,23 @@
 
 function formatDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
-  const d = new Date(dateStr + 'T00:00:00');
+  // Extract only the date part (YYYY-MM-DD) from the string
+  const dateMatch = dateStr.match(/^\d{4}-\d{2}-\d{2}/);
+  if (!dateMatch) return 'Invalid Date';
+  const d = new Date(dateMatch[0] + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'Invalid Date';
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 function daysUntilExpiry(dateStr) {
   if (!dateStr) return null;
+  // Extract only the date part (YYYY-MM-DD) from the string
+  const dateMatch = dateStr.match(/^\d{4}-\d{2}-\d{2}/);
+  if (!dateMatch) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const expiry = new Date(dateStr + 'T00:00:00');
+  const expiry = new Date(dateMatch[0] + 'T00:00:00');
+  if (isNaN(expiry.getTime())) return null;
   const diff = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
   return diff;
 }
