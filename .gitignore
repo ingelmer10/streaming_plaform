@@ -3,3 +3,4 @@ server/node_modules/
 server/streaming.db
 .env
 *.log
+server/streaming.db*
