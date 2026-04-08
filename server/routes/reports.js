@@ -193,95 +193,140 @@ router.get('/sales', async (req, res) => {
   }
 });
 
-module.exports = router;
-
 // GET /api/reports/renewals - Renewal history
-router.get('/renewals', (req, res) => {
-  const { from, to, limit } = req.query;
-  let query = `
-    SELECT
-      r.*,
-      COALESCE(p.profile_name, r.profile_name) as profile_name,
-      COALESCE(p.client_name, r.client_name) as client_name,
-      COALESCE(p.client_whatsapp, r.client_whatsapp) as client_whatsapp,
-      COALESCE(a.email, r.account_email) as account_email,
-      COALESCE(pl.name, r.platform_name) as platform_name,
-      COALESCE(pl.icon, r.platform_icon) as platform_icon,
-      COALESCE(pl.color, r.platform_color) as platform_color
-    FROM renewals r
-    LEFT JOIN profiles p ON p.id = r.profile_id
-    LEFT JOIN accounts a ON a.id = r.account_id
-    LEFT JOIN platforms pl ON pl.id = r.platform_id
-  `;
+router.get('/renewals', async (req, res) => {
+  try {
+    const { from, to, limit } = req.query;
+    const conditions = [];
+    const params = [];
 
-  const conditions = [];
-  const params = [];
+    if (from) {
+      conditions.push('r.created_at >= $' + (params.length + 1));
+      params.push(from);
+    }
+    if (to) {
+      conditions.push('r.created_at <= $' + (params.length + 1));
+      params.push(`${to} 23:59:59`);
+    }
 
-  if (from) {
-    conditions.push('r.created_at >= ?');
-    params.push(from);
+    let query = `
+      SELECT
+        r.*,
+        COALESCE(p.profile_name, r.profile_name) as profile_name,
+        COALESCE(p.client_name, r.client_name) as client_name,
+        COALESCE(p.client_whatsapp, r.client_whatsapp) as client_whatsapp,
+        COALESCE(a.email, r.account_email) as account_email,
+        COALESCE(pl.name, r.platform_name) as platform_name,
+        COALESCE(pl.icon, r.platform_icon) as platform_icon,
+        COALESCE(pl.color, r.platform_color) as platform_color
+      FROM renewals r
+      LEFT JOIN profiles p ON p.id = r.profile_id
+      LEFT JOIN accounts a ON a.id = r.account_id
+      LEFT JOIN platforms pl ON pl.id = r.platform_id
+    `;
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' ORDER BY r.created_at DESC';
+
+    if (limit) {
+      params.push(parseInt(limit, 10));
+      query += ' LIMIT $' + params.length;
+    }
+
+    const renewalsResult = await pool.query(query, params);
+    const renewals = renewalsResult.rows;
+    const totalRevenue = renewals.reduce((sum, r) => sum + parseFloat(r.sale_price || 0), 0);
+
+    res.json({ renewals, totalRevenue, count: renewals.length });
+  } catch (err) {
+    console.error('Reports renewals error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
-  if (to) {
-    conditions.push('r.created_at <= ?');
-    params.push(to + ' 23:59:59');
-  }
-
-  if (conditions.length > 0) {
-    query += ' WHERE ' + conditions.join(' AND ');
-  }
-
-  query += ' ORDER BY r.created_at DESC';
-
-  if (limit) {
-    query += ' LIMIT ?';
-    params.push(parseInt(limit));
-  }
-
-  const renewals = db.prepare(query).all(...params);
-  
-  const totalRevenue = renewals.reduce((sum, r) => sum + (r.sale_price || 0), 0);
-  
-  res.json({ renewals, totalRevenue, count: renewals.length });
 });
 
 // GET /api/reports/monthly - Monthly revenue/costs
-router.get('/monthly', (req, res) => {
-  const months = db.prepare(`
-    SELECT
-      strftime('%Y-%m', r.created_at) as month,
-      COUNT(*) as renewal_count,
-      COALESCE(SUM(r.sale_price), 0) as revenue
-    FROM renewals r
-    GROUP BY month
-    ORDER BY month DESC
-    LIMIT 12
-  `).all();
+router.get('/monthly', async (req, res) => {
+  try {
+    const monthlyResult = await pool.query(`
+      SELECT
+        TO_CHAR(created_at, 'YYYY-MM') as month,
+        COUNT(*) as renewal_count,
+        COALESCE(SUM(sale_price), 0) as revenue
+      FROM renewals
+      GROUP BY month
+      ORDER BY month DESC
+      LIMIT 12
+    `);
 
-  res.json(months);
+    res.json(monthlyResult.rows);
+  } catch (err) {
+    console.error('Reports monthly error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
 
-// GET /api/reports/expiring - All expiring soon items
-router.get('/expiring', (req, res) => {
-  const days = parseInt(req.query.days) || 7;
+// GET /api/reports/expiring - All expiring accounts and profiles within next X days
+router.get('/expiring', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days, 10) || 7;
 
-  const accounts = db.prepare(`
-    SELECT a.*, pl.name as platform_name, pl.icon as platform_icon, pl.color as platform_color
-    FROM accounts a
-    JOIN platforms pl ON pl.id = a.platform_id
-    WHERE a.expiry_date IS NOT NULL AND a.expiry_date <= date('now', '+' || ? || ' days')
-    ORDER BY a.expiry_date ASC
-  `).all(days);
+    const accountsResult = await pool.query(`
+      SELECT
+        'account' as type,
+        a.*, 
+        p.name as platform_name,
+        p.icon as platform_icon,
+        p.color as platform_color
+      FROM accounts a
+      JOIN platforms p ON p.id = a.platform_id
+      WHERE a.expiry_date IS NOT NULL AND a.expiry_date <= CURRENT_DATE + $1 * INTERVAL '1 day'
+      ORDER BY a.expiry_date ASC
+    `, [days]);
 
-  const profiles = db.prepare(`
-    SELECT p.*, a.email as account_email, pl.name as platform_name, pl.icon as platform_icon, pl.color as platform_color
-    FROM profiles p
-    JOIN accounts a ON a.id = p.account_id
-    JOIN platforms pl ON pl.id = a.platform_id
-    WHERE p.expiry_date IS NOT NULL AND p.expiry_date <= date('now', '+' || ? || ' days') AND p.is_active = 1
-    ORDER BY p.expiry_date ASC
-  `).all(days);
+    const profilesResult = await pool.query(`
+      SELECT
+        'profile' as type,
+        p.*, 
+        a.email as account_email,
+        pl.name as platform_name,
+        pl.icon as platform_icon,
+        pl.color as platform_color
+      FROM profiles p
+      JOIN accounts a ON a.id = p.account_id
+      JOIN platforms pl ON pl.id = a.platform_id
+      WHERE p.expiry_date IS NOT NULL AND p.expiry_date <= CURRENT_DATE + $1 * INTERVAL '1 day' AND p.is_active = true
+      ORDER BY p.expiry_date ASC
+    `, [days]);
 
-  res.json({ accounts, profiles });
+    res.json({ accounts: accountsResult.rows, profiles: profilesResult.rows });
+  } catch (err) {
+    console.error('Reports expiring error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// POST /api/reports/reset - Reset accounts, profiles and renewals while preserving platforms and users
+router.post('/reset', async (req, res) => {
+  try {
+    if (req.user?.username !== 'admin') {
+      return res.status(403).json({ error: 'Permisos insuficientes para reiniciar datos' });
+    }
+
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM renewals');
+    await pool.query('DELETE FROM profiles');
+    await pool.query('DELETE FROM accounts');
+    await pool.query('COMMIT');
+
+    res.json({ message: 'Datos reiniciados correctamente' });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Reports reset error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
 
 module.exports = router;

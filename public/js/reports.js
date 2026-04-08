@@ -11,7 +11,10 @@ async function renderReports() {
           <h2>📊 Reportes</h2>
           <p>Ventas, ganancias y estado de cuentas</p>
         </div>
-        <button class="btn btn-secondary" onclick="navigateTo('dashboard')">← Dashboard</button>
+        <div class="page-header-actions">
+          <button class="btn btn-danger" style="margin-right:0.75rem;" onclick="confirmResetData()">Reiniciar datos</button>
+          <button class="btn btn-secondary" onclick="navigateTo('dashboard')">← Dashboard</button>
+        </div>
       </div>
 
       <!-- Summary Cards -->
@@ -76,6 +79,21 @@ async function loadReportSummary() {
     `;
   } catch (err) {
     showToast('Error al cargar resumen', 'error');
+  }
+}
+
+async function confirmResetData() {
+  if (!confirm('Esto borrará todas las cuentas, perfiles y renovaciones y reiniciará los reportes. ¿Deseas continuar?')) {
+    return;
+  }
+
+  try {
+    await apiResetData();
+    showToast('Datos reiniciados correctamente', 'success');
+    navigateTo('reports');
+  } catch (err) {
+    console.error('Reset data error:', err);
+    showToast(err.message || 'Error al reiniciar datos', 'error');
   }
 }
 

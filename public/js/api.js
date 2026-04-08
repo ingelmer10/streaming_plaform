@@ -187,3 +187,9 @@ async function apiGetReportMonthly() {
 async function apiGetReportExpiring(days) {
   return apiFetch('/reports/expiring?days=' + (days || 7));
 }
+
+async function apiResetData() {
+  return apiFetch('/reports/reset', {
+    method: 'POST'
+  });
+}
