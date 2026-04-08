@@ -48,13 +48,13 @@ Tu cuenta de *${platformName}* vence *hoy*. Para no perder el acceso, por favor 
 }
 
 function waRenewalMessage(profile, platformName, newDate, account) {
-  return `*🔴 ${platformName.toUpperCase()} 🔴*
+  return `*${platformName.toUpperCase()}*
 ========================
 📧 *CORREO:* ${account.email}
-🔑 *CONTRASEÑA:* ${account.password}
-🖥 *PERFIL:* ${profile.profile_name}  *PIN:* ${profile.pin || 'Sin PIN'}
+🔒 *CONTRASEÑA:* ${account.password}
+👤 *PERFIL:* ${profile.profile_name}  *PIN:* ${profile.pin || 'Sin PIN'}
 ========================
-♻ *FECHA VENC.: ${formatDate(newDate)}*
+📅 *FECHA VENC.: ${formatDate(newDate)}*
 ========================
 *REGLAS:*
 1.- NO COMPARTIR LA CUENTA.
@@ -62,7 +62,7 @@ function waRenewalMessage(profile, platformName, newDate, account) {
 3.- NO CAMBIAR NADA EN LA CUENTA.
 4.- NO ACTIVAR MIEMBRO EXTRA.
 5.- USAR SOLO EN UN DISPOSITIVO.
-*¡GRACIAS POR SU PREFERENCIA!🤗*`;
+*¡GRACIAS POR SU PREFERENCIA! 😊*`;
 }
 
 function cleanPhoneNumber(phone) {
@@ -72,6 +72,7 @@ function cleanPhoneNumber(phone) {
 
 function openWhatsApp(phone, message) {
   const cleanPhone = cleanPhoneNumber(phone);
+  // Use proper UTF-8 encoding that preserves emojis
   const encodedMsg = encodeURIComponent(message);
   const url = `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
   window.open(url, '_blank');
