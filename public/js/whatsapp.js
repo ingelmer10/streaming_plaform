@@ -39,22 +39,27 @@ function waReminderMessage(profile, platformName) {
   const days = daysUntilExpiry(profile.expiry_date);
   const daysText = days === 1 ? '1 día' : `${days} días`;
   return `Hola *${profile.client_name}*
-Te recuerdo que tu cuenta de *${platformName}* vence en *${daysText}*. Puedes renovar cuando gustes. ¡Estamos para ayudarte!`;
+Te recuerdo que tu cuenta de *${platformName}* vence en *${daysText}*. Puedes renovar cuando gustes.
+
+¡Estamos para ayudarte!`;
 }
 
 function waExpiryMessage(profile, platformName) {
   return `Hola ${profile.client_name}
-Tu cuenta de *${platformName}* vence *hoy*. Para no perder el acceso, por favor renueva lo antes posible. ¡Gracias!`;
+Tu cuenta de *${platformName}* vence *hoy*.
+Para no perder el acceso, por favor renueva lo antes posible. 
+
+¡Gracias!`;
 }
 
 function waRenewalMessage(profile, platformName, newDate, account) {
-  return `*${platformName.toUpperCase()}*
+  return `*🔴${platformName.toUpperCase()}🔴*
 ========================
 📧 *CORREO:* ${account.email}
-🔒 *CONTRASEÑA:* ${account.password}
-👤 *PERFIL:* ${profile.profile_name}  *PIN:* ${profile.pin || 'Sin PIN'}
+🔑 *CONTRASEÑA:* ${account.password}
+🖥 *PERFIL:* ${profile.profile_name}  *PIN:* ${profile.pin || 'Sin PIN'}
 ========================
-📅 *FECHA VENC.: ${formatDate(newDate)}*
+📅 *VENCE: ${formatDate(newDate)}*
 ========================
 *REGLAS:*
 1.- NO COMPARTIR LA CUENTA.
@@ -62,7 +67,7 @@ function waRenewalMessage(profile, platformName, newDate, account) {
 3.- NO CAMBIAR NADA EN LA CUENTA.
 4.- NO ACTIVAR MIEMBRO EXTRA.
 5.- USAR SOLO EN UN DISPOSITIVO.
-*¡GRACIAS POR SU PREFERENCIA! 😊*`;
+*¡GRACIAS POR SU PREFERENCIA! 🤗*`;
 }
 
 function cleanPhoneNumber(phone) {
